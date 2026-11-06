@@ -123,9 +123,7 @@ app.post("/api/render", (_req, res) => res.status(501).json({ error: "Cloud rend
 
 if (!process.env.VERCEL) {
   app.listen(port, () => {
-    console.log(
-      `Bang Motion Studio API listening on :${port}`
-    );
+    console.log(`Bang Motion Studio API listening on :${port}`);
   });
 }
 
