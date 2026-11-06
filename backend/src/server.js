@@ -121,4 +121,12 @@ app.delete("/api/projects/:id", async (req, res) => {
 app.post("/api/ai/generate", (_req, res) => res.status(501).json({ error: "AI generator akan diaktifkan pada tahap 2." }));
 app.post("/api/render", (_req, res) => res.status(501).json({ error: "Cloud rendering akan diaktifkan pada tahap 4." }));
 
-app.listen(port, () => console.log(`Bang Motion Studio API listening on :${port}`));
+if (!process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(
+      `Bang Motion Studio API listening on :${port}`
+    );
+  });
+}
+
+export default app;
