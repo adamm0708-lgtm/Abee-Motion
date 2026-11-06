@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { gsap } from "gsap";
 import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle } from "lucide-react";
 
 const initialLayers = [
@@ -15,6 +16,8 @@ export default function Editor({ project, onBack }) {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState("design");
+  const timelineRef = useRef(null);
+  const objectRefs = useRef({});
   const active = layers.find(l => l.id === selected) || layers[0];
   const update = (patch) => setLayers(old => old.map(l => l.id === selected ? { ...l, ...patch } : l));
   const addLayer = (type) => {
@@ -23,7 +26,30 @@ export default function Editor({ project, onBack }) {
     setLayers(old => [...old, item]); setSelected(id);
   };
   const toggleKeyframe = () => update({ keyframes: active.keyframes.includes(time) ? active.keyframes.filter(k => k !== time) : [...active.keyframes, time].sort((a,b)=>a-b) });
-  const previewLayers = useMemo(() => layers.filter(l => l.visible && time >= l.start && time <= l.end), [layers, time]);
+  const previewLayers = useMemo(() => layers.filter(l => l.visible), [layers]);
+  useEffect(() => {
+    const tl = gsap.timeline({ paused: true, defaults: { ease: "power2.out" } });
+    layers.forEach(layer => {
+      const node = objectRefs.current[layer.id];
+      if (!node || !layer.visible || layer.type === "audio") return;
+      const span = Math.max(0.4, layer.end - layer.start);
+      tl.set(node, { autoAlpha: 0, scale: Math.max(0.1, layer.scale * 0.72), rotation: layer.rotation - 8 }, layer.start);
+      tl.to(node, { autoAlpha: layer.opacity / 100, scale: layer.scale, rotation: layer.rotation, duration: Math.min(0.8, span * 0.25) }, layer.start);
+      tl.to(node, { autoAlpha: 0, duration: 0.35 }, Math.max(layer.start, layer.end - 0.35));
+    });
+    timelineRef.current?.kill();
+    timelineRef.current = tl;
+    tl.eventCallback("onUpdate", () => setTime(Number(tl.time().toFixed(2))));
+    tl.time(time, false);
+    return () => tl.kill();
+  }, [layers, duration]);
+  useEffect(() => {
+    if (timelineRef.current && !playing) timelineRef.current.time(time, false);
+  }, [time, playing]);
+  useEffect(() => {
+    const tl = timelineRef.current;
+    if (tl) playing ? tl.play() : tl.pause();
+  }, [playing, layers]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
     <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · AUTO WORKSPACE</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
@@ -31,8 +57,8 @@ export default function Editor({ project, onBack }) {
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button onClick={()=>addLayer("image")}><Image/><span>Gambar</span></button><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
       <div className="pro-stage">
         <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
-        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%) rotate("+l.rotation+"deg) scale("+l.scale+")",opacity:l.opacity/100,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<span>▧ MEDIA</span>:<span>♫ AUDIO</span>}</div>)}</div></div>
-        <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input type="range" min="0" max={duration} step=".1" value={time} onChange={e=>{setTime(Number(e.target.value));setPlaying(false)}}/><span>{ratio}</span></div>
+        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<span>▧ MEDIA</span>:<span>♫ AUDIO</span>}</div>)}</div></div>
+        <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input type="range" min="0" max={duration} step=".1" value={time} onChange={e=>{setTime(Number(e.target.value));setPlaying(false);timelineRef.current?.pause().time(Number(e.target.value), false)}}/><span>{ratio}</span></div>
       </div>
       <aside className="pro-inspector"><div className="pro-tabs"><button className={tab==="design"?"on":""} onClick={()=>setTab("design")}>Properties</button><button className={tab==="layers"?"on":""} onClick={()=>setTab("layers")}>Layers</button></div>
         {tab==="design" ? <>{active ? <><div className="pro-selected"><b>{active.name}</b><small>{active.type.toUpperCase()} LAYER</small></div>{active.type==="text"&&<label className="pro-field">Konten teks<input value={active.text} onChange={e=>update({text:e.target.value})}/></label>}<label className="pro-field">Warna<input type="color" value={active.color} onChange={e=>update({color:e.target.value})}/></label><div className="pro-field-grid"><label className="pro-field">Posisi X<input type="number" value={active.x} onChange={e=>update({x:Number(e.target.value)})}/></label><label className="pro-field">Posisi Y<input type="number" value={active.y} onChange={e=>update({y:Number(e.target.value)})}/></label><label className="pro-field">Skala<input type="number" step=".1" value={active.scale} onChange={e=>update({scale:Number(e.target.value)})}/></label><label className="pro-field">Rotasi<input type="number" value={active.rotation} onChange={e=>update({rotation:Number(e.target.value)})}/></label></div><label className="pro-field">Opacity · {active.opacity}%<input type="range" min="0" max="100" value={active.opacity} onChange={e=>update({opacity:Number(e.target.value)})}/></label><button className={"pro-key "+(active.keyframes.includes(time)?"key-on":"")} onClick={toggleKeyframe}><Diamond size={15}/> {active.keyframes.includes(time)?"Hapus keyframe":"Tambah keyframe"} · {time.toFixed(1)}s</button></> : <p>Pilih layer untuk mengedit.</p>}</> : <div className="pro-layer-list">{layers.map(l=><div key={l.id} className={"pro-layer-row "+(selected===l.id?"sel":"")}><button onClick={()=>setSelected(l.id)}><span className="pro-layer-icon">{l.type==="text"?<Type size={14}/>:l.type==="shape"?<Square size={14}/>:l.type==="image"?<Image size={14}/>:<Music2 size={14}/>}</span><span>{l.name}</span></button><button title="Tampilkan/sembunyikan" onClick={()=>setLayers(old=>old.map(x=>x.id===l.id?{...x,visible:!x.visible}:x))}>{l.visible?<Eye size={14}/>:<EyeOff size={14}/>}</button><button title="Kunci/buka" onClick={()=>setLayers(old=>old.map(x=>x.id===l.id?{...x,locked:!x.locked}:x))}>{l.locked?<Lock size={14}/>:<Unlock size={14}/>}</button><button title="Hapus layer" onClick={()=>{setLayers(old=>old.filter(x=>x.id!==l.id));if(selected===l.id)setSelected(layers.find(x=>x.id!==l.id)?.id)}}><Trash2 size={14}/></button></div>)}</div>}
