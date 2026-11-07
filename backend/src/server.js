@@ -164,7 +164,69 @@ app.delete("/api/projects/:id", async (req, res) => {
 });
 
 // AI generator remains a later development stage.
-app.post("/api/ai/generate", (_req, res) => res.status(501).json({ error: "AI generator belum diaktifkan." }));
+app.post("/api/ai/generate", async (req, res) => {
+  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
+  const duration = Number(req.body?.duration || 15);
+  const ratio = ["9:16", "16:9", "1:1"].includes(req.body?.ratio) ? req.body.ratio : "9:16";
+
+  if (prompt.length < 5) return res.status(400).json({ error: "Prompt minimal 5 karakter." });
+  if (prompt.length > 4000) return res.status(400).json({ error: "Prompt maksimal 4.000 karakter." });
+  if (!Number.isInteger(duration) || duration < 5 || duration > 60) {
+    return res.status(400).json({ error: "Durasi harus antara 5 sampai 60 detik." });
+  }
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: "GEMINI_API_KEY belum dipasang di backend Vercel." });
+  }
+
+  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+  const systemInstruction = [
+    "You are a senior motion designer and creative frontend animator.",
+    "Create one complete, self-contained HTML document for a polished motion-graphics animation.",
+    "Use HTML, CSS, and inline SVG only. Do not use external libraries, network requests, images, fonts, or assets.",
+    "Use CSS keyframes and SVG animation for motion. Make the animation loop smoothly.",
+    "The page must fill the viewport, have a transparent or dark cinematic background as appropriate, and scale responsively.",
+    "Do not include editor controls, explanations, markdown fences, or any text outside the HTML document.",
+    "Use readable typography, strong composition, layered movement, and visual polish. Avoid generic placeholder blocks.",
+    "The requested duration is a design target; distribute the motion across that duration and make the loop seamless."
+  ].join(" ");
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ role: "user", parts: [{ text: `Create a ${duration}-second motion animation in ${ratio} aspect ratio. User brief: ${prompt}` }] }],
+        generationConfig: { temperature: 0.7, maxOutputTokens: 12000 }
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = data?.error?.message || "Gemini gagal membuat animasi.";
+      const status = response.status === 429 ? 429 : response.status === 400 ? 400 : 502;
+      return res.status(status).json({ error: message });
+    }
+
+    const html = (data?.candidates?.[0]?.content?.parts || [])
+      .map(part => part.text || "")
+      .join("")
+      .trim()
+      .replace(/^\`\`\`(?:html)?\s*/i, "")
+      .replace(/\`\`\`\s*$/i, "");
+
+    if (!html.toLowerCase().includes("<html") || !html.toLowerCase().includes("</html>")) {
+      return res.status(502).json({ error: "AI belum menghasilkan dokumen animasi yang valid. Coba prompt yang lebih sederhana." });
+    }
+
+    return res.json({ ok: true, model, html });
+  } catch (error) {
+    return res.status(502).json({ error: "Tidak dapat menghubungi Gemini: " + error.message });
+  }
+});
 
 app.get("/api/projects/:id/renders", async (req,res) => {
   if (!supabase) return res.status(503).json({ error:"Supabase belum dikonfigurasi." });
