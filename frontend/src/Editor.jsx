@@ -363,10 +363,6 @@ export default function Editor({ project, onBack }) {
         }
       }
     });
-    return () => {
-      if (!playing) return;
-      layers.filter(layer => layer.type === "audio").forEach(layer => audioRefs.current[layer.id]?.pause());
-    };
   }, [time, playing, layers, duration]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
