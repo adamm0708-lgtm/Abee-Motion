@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle } from "lucide-react";
+import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle, Undo2, Redo2 } from "lucide-react";
 
 const initialLayers = [
   { id: 1, name: "Judul utama", type: "text", text: "MAKE IT MOVE.", x: 50, y: 48, scale: 1, rotation: 0, opacity: 100, color: "#f4d28d", start: 0, end: 8, visible: true, locked: false, ease:"power2.inOut", keyframes: [{t:0,x:50,y:48,scale:0.8,rotation:-8,opacity:0},{t:4,x:50,y:42,scale:1.15,rotation:0,opacity:100}] },
@@ -20,6 +20,53 @@ export default function Editor({ project, onBack }) {
   const [hydrated, setHydrated] = useState(false);
   const [saveState, setSaveState] = useState("Memuat proyek...");
   const [audioWaveforms, setAudioWaveforms] = useState({});
+  const historyRef = useRef({ past: [], future: [] });
+  const lastLayersRef = useRef(null);
+  const skipHistoryRef = useRef(false);
+  const [, refreshHistory] = useState(0);
+
+  useEffect(() => {
+    const snapshot = JSON.stringify(layers);
+    if (lastLayersRef.current === null) {
+      lastLayersRef.current = snapshot;
+      return;
+    }
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      lastLayersRef.current = snapshot;
+      return;
+    }
+    if (lastLayersRef.current !== snapshot) {
+      historyRef.current.past.push(lastLayersRef.current);
+      if (historyRef.current.past.length > 60) historyRef.current.past.shift();
+      historyRef.current.future = [];
+      lastLayersRef.current = snapshot;
+      refreshHistory(value => value + 1);
+    }
+  }, [layers]);
+
+  const undo = () => {
+    const history = historyRef.current;
+    if (!history.past.length) return;
+    history.future.push(JSON.stringify(layers));
+    const previous = history.past.pop();
+    skipHistoryRef.current = true;
+    lastLayersRef.current = previous;
+    setLayers(JSON.parse(previous));
+    refreshHistory(value => value + 1);
+  };
+
+  const redo = () => {
+    const history = historyRef.current;
+    if (!history.future.length) return;
+    history.past.push(JSON.stringify(layers));
+    const next = history.future.pop();
+    skipHistoryRef.current = true;
+    lastLayersRef.current = next;
+    setLayers(JSON.parse(next));
+    refreshHistory(value => value + 1);
+  };
+
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
@@ -405,7 +452,7 @@ export default function Editor({ project, onBack }) {
   }, [time, playing, layers, duration]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
-    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
+    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
     <div className="pro-workspace">
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button disabled={uploading} onClick={()=>audioInputRef.current?.click()}><Music2/><span>{uploading?"Upload...":"Audio"}</span></button><input ref={audioInputRef} type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac" hidden onChange={handleAudioUpload}/></aside>
       <div className="pro-stage">
