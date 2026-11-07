@@ -20,6 +20,9 @@ export default function Editor({ project, onBack }) {
   const [hydrated, setHydrated] = useState(false);
   const [saveState, setSaveState] = useState("Memuat proyek...");
   const [audioWaveforms, setAudioWaveforms] = useState({});
+  const [rendering, setRendering] = useState(false);
+  const [renderState, setRenderState] = useState("Export");
+  const [renderUrl, setRenderUrl] = useState("");
   const historyRef = useRef({ past: [], future: [] });
   const lastLayersRef = useRef(null);
   const skipHistoryRef = useRef(false);
@@ -324,6 +327,31 @@ export default function Editor({ project, onBack }) {
     }));
     dragRef.current = null;
   };
+  const handleExport = async () => {
+    if (renderUrl) { window.open(renderUrl, "_blank", "noopener,noreferrer"); return; }
+    if (!project?.id || rendering) return;
+    setRendering(true); setRenderState("Menyiapkan...");
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+      const startResponse = await fetch(apiBase + "/api/render", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ projectId:project.id }) });
+      const startResult = await startResponse.json().catch(()=>({}));
+      if (!startResponse.ok) throw new Error(startResult.error || "Gagal memulai render.");
+      setRenderState("Merender...");
+      for (let attempt=0; attempt<180; attempt++) {
+        await new Promise(resolve=>window.setTimeout(resolve,3000));
+        const statusResponse = await fetch(apiBase + "/api/projects/" + project.id + "/renders");
+        const statusResult = await statusResponse.json().catch(()=>({}));
+        if (!statusResponse.ok) throw new Error(statusResult.error || "Gagal memeriksa status render.");
+        const latest = statusResult.data?.[0];
+        if (latest?.status === "completed" && latest.output_url) { setRenderUrl(latest.output_url); setRenderState("Unduh MP4"); return; }
+        if (latest?.status === "failed") throw new Error(latest.error_message || "Rendering gagal.");
+        setRenderState(latest?.progress ? "Render " + latest.progress + "%" : "Merender...");
+      }
+      setRenderState("Masih diproses");
+      window.alert("Render masih berjalan di server. Tekan Export lagi beberapa saat nanti untuk memeriksa hasil terbaru.");
+    } catch (error) { setRenderState("Export"); window.alert(error.message || "Ekspor MP4 gagal."); }
+    finally { setRendering(false); }
+  };
   const seekTime = (value) => {
     const next = Math.max(0, Math.min(duration, Number(value) || 0));
     setPlaying(false);
@@ -481,7 +509,7 @@ export default function Editor({ project, onBack }) {
   }, [time, playing, layers, duration]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
-    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
+    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><button className="pro-export" disabled={rendering} onClick={handleExport}><Download size={15}/> {renderState}</button></div>
     <div className="pro-workspace">
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button disabled={uploading} onClick={()=>audioInputRef.current?.click()}><Music2/><span>{uploading?"Upload...":"Audio"}</span></button><input ref={audioInputRef} type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac" hidden onChange={handleAudioUpload}/></aside>
       <div className="pro-stage">
