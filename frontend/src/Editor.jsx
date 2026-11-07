@@ -24,6 +24,7 @@ export default function Editor({ project, onBack }) {
   const [rendering, setRendering] = useState(false);
   const [renderState, setRenderState] = useState("Export");
   const [renderUrl, setRenderUrl] = useState("");
+  const ffmpegRef = useRef(null);
   const historyRef = useRef({ past: [], future: [] });
   const lastLayersRef = useRef(null);
   const skipHistoryRef = useRef(false);
@@ -328,7 +329,7 @@ export default function Editor({ project, onBack }) {
     }));
     dragRef.current = null;
   };
-  const handleExport = async () => {
+  const handleExport = async (format = "webm") => {
     if (rendering) return;
     setRendering(true);
     setRenderState("Menyiapkan...");
@@ -476,14 +477,60 @@ export default function Editor({ project, onBack }) {
       await stopped;
       const blob=new Blob(chunks,{type:mimeType});
       if(!blob.size) throw new Error("Hasil rekaman kosong.");
-      const url=URL.createObjectURL(blob);
-      const link=document.createElement("a");
-      link.href=url;
-      link.download=(project?.title||"bang-motion-video").replace(/[^a-z0-9-_]/gi,"_")+".webm";
-      document.body.appendChild(link); link.click(); link.remove();
-      window.setTimeout(()=>URL.revokeObjectURL(url),60000);
-      setRenderState("Export WebM");
-      window.alert("Video berhasil diekspor dalam format WebM. Simpan file dari browser.");
+      const baseName=(project?.title||"bang-motion-video").replace(/[^a-z0-9-_]/gi,"_");
+      const downloadBlob=(fileBlob,extension) => {
+        const fileUrl=URL.createObjectURL(fileBlob);
+        const link=document.createElement("a");
+        link.href=fileUrl;
+        link.download=baseName+"."+extension;
+        document.body.appendChild(link); link.click(); link.remove();
+        window.setTimeout(()=>URL.revokeObjectURL(fileUrl),60000);
+      };
+      if(format==="webm") {
+        downloadBlob(blob,"webm");
+        setRenderState("Export WebM");
+        window.alert("Video berhasil diekspor dalam format WebM.");
+      } else {
+        try {
+          setRenderState("Memuat mesin MP4...");
+          if(!ffmpegRef.current) {
+            const [{FFmpeg},{toBlobURL}]=await Promise.all([
+              import("@ffmpeg/ffmpeg"),
+              import("@ffmpeg/util")
+            ]);
+            const ffmpeg=new FFmpeg();
+            ffmpeg.on("log",({message})=>console.log("FFmpeg:",message));
+            const coreURL="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+            await ffmpeg.load({
+              coreURL:await toBlobURL(coreURL+"/ffmpeg-core.js","text/javascript"),
+              wasmURL:await toBlobURL(coreURL+"/ffmpeg-core.wasm","application/wasm")
+            });
+            ffmpegRef.current=ffmpeg;
+          }
+          setRenderState("Konversi MP4...");
+          const ffmpeg=ffmpegRef.current;
+          await ffmpeg.writeFile("bang-motion-input.webm",new Uint8Array(await blob.arrayBuffer()));
+          await ffmpeg.exec([
+            "-i","bang-motion-input.webm",
+            "-map","0:v:0","-map","0:a?",
+            "-c:v","libx264","-preset","ultrafast","-crf","28",
+            "-pix_fmt","yuv420p","-c:a","aac","-b:a","128k",
+            "-movflags","+faststart","bang-motion-output.mp4"
+          ]);
+          const output=await ffmpeg.readFile("bang-motion-output.mp4");
+          const mp4Blob=new Blob([output.buffer],{type:"video/mp4"});
+          if(!mp4Blob.size) throw new Error("File MP4 kosong.");
+          downloadBlob(mp4Blob,"mp4");
+          await ffmpeg.deleteFile("bang-motion-input.webm").catch(()=>{});
+          await ffmpeg.deleteFile("bang-motion-output.mp4").catch(()=>{});
+          setRenderState("Export MP4");
+          window.alert("MP4 berhasil dibuat dan diunduh. Proses konversi dilakukan di browser HP.");
+        } catch(convertError) {
+          downloadBlob(blob,"webm");
+          setRenderState("Export WebM");
+          window.alert("Konversi MP4 belum berhasil: "+(convertError.message||"kesalahan tidak diketahui")+"\n\nVideo WebM tetap berhasil dibuat dan sudah diunduh sebagai cadangan.");
+        }
+      }
     } catch(error) {
       if(recorder && recorder.state!=="inactive") { try { recorder.stop(); } catch {} }
       window.alert(error.message || "Ekspor lokal gagal.");
@@ -652,7 +699,7 @@ export default function Editor({ project, onBack }) {
   }, [time, playing, layers, duration]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
-    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><button className="pro-export" disabled={rendering} onClick={handleExport}><Download size={15}/> {renderState}</button></div>
+    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><div className="pro-export-group"><button className="pro-export" disabled={rendering} onClick={()=>handleExport("mp4")}><Download size={15}/> {rendering?renderState:"Export MP4"}</button><button className="pro-export-secondary" disabled={rendering} onClick={()=>handleExport("webm")}>WebM</button></div></div>
     <div className="pro-workspace">
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button disabled={uploading} onClick={()=>audioInputRef.current?.click()}><Music2/><span>{uploading?"Upload...":"Audio"}</span></button><input ref={audioInputRef} type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac" hidden onChange={handleAudioUpload}/></aside>
       <div className="pro-stage">
