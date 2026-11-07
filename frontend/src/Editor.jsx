@@ -1,4 +1,4 @@
-// Bang Motion Studio editor: browser-local WebM export entry point.
+// Abee Motion Verse editor: browser-local WebM export entry point.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle, Undo2, Redo2 } from "lucide-react";
