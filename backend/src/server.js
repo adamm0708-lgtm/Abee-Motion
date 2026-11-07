@@ -72,6 +72,13 @@ app.post("/api/projects", async (req, res) => {
   return res.status(201).json({ data: payload });
 });
 
+app.get("/api/projects/:id/assets", async (req, res) => {
+  if (!supabase) return res.status(503).json({ error: "Supabase belum dikonfigurasi." });
+  const { data, error } = await supabase.from("assets").select("*").eq("project_id", req.params.id).order("created_at", { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ data });
+});
+
 app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stream", limit: "4mb" }), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "Supabase belum dikonfigurasi." });
   const projectId = req.params.id;
