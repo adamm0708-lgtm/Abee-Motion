@@ -37,7 +37,7 @@ export default function Editor({ project, onBack }) {
     reader.onload = () => {
       const id = Math.max(0, ...layers.map(layer => layer.id)) + 1;
       const item = {
-        id, name: file.name.replace(/\\.[^.]+$/, "") || "Gambar",
+        id, name: file.name.replace(/\.[^.]+$/, "") || "Gambar",
         type: "image", text: "", imageSrc: reader.result,
         x: 50, y: 50, scale: 1, rotation: 0, opacity: 100,
         color: "#ffffff", start: time, end: duration,
