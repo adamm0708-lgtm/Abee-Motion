@@ -1,4 +1,4 @@
-const CACHE = "bang-motion-shell-v1";
+const CACHE = "abee-motion-verse-shell-v1";
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(["/", "/manifest.json"])));
 });
