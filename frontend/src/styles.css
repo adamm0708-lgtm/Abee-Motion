@@ -21,3 +21,11 @@
 .pro-time-scrubber{cursor:pointer;touch-action:pan-x;accent-color:#d9b46a;min-height:28px;position:relative;z-index:5;pointer-events:auto}
 .pro-track-line{cursor:crosshair;touch-action:pan-y}
 .pro-clip,.pro-diamond{z-index:3}
+
+.pro-clip{touch-action:none;user-select:none;cursor:grab;display:flex;align-items:center;justify-content:center;padding:0 9px}
+.pro-clip:active{cursor:grabbing}
+.pro-clip-label{pointer-events:none}
+.pro-clip-handle{position:absolute;top:0;bottom:0;width:9px;background:#f0d38e;opacity:.9;cursor:ew-resize;z-index:4}
+.pro-clip-handle.left{left:0;border-radius:4px 0 0 4px}
+.pro-clip-handle.right{right:0;border-radius:0 4px 4px 0}
+.pro-track-line{touch-action:pan-y}
