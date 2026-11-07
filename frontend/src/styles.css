@@ -29,3 +29,7 @@
 .pro-clip-handle.left{left:0;border-radius:4px 0 0 4px}
 .pro-clip-handle.right{right:0;border-radius:0 4px 4px 0}
 .pro-track-line{touch-action:pan-y}
+
+.pro-playhead-line{position:absolute;z-index:5;top:-3px;bottom:-3px;width:2px;background:#f5d58f;box-shadow:0 0 7px #f5d58f99;transform:translateX(-1px);pointer-events:none}
+.pro-playhead-line:before{content:"";position:absolute;top:-3px;left:-4px;width:8px;height:8px;background:#f5d58f;transform:rotate(45deg);border-radius:1px}
+.pro-diamond{cursor:pointer;touch-action:manipulation}
