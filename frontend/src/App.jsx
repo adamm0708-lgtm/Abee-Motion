@@ -113,7 +113,7 @@ function App() {
 
       {page==="editor" && <Editor project={activeProject} onBack={()=>setPage("projects")}/>}
 
-      {page==="settings" && <section className="content"><div className="eyebrow muted">PREFERENCES</div><h1>Pengaturan</h1><div className="settings-card"><div><b>Bang Motion Studio</b><p>Personal workspace · MVP 0.1.0</p></div><span className="pill">Tahap 1</span></div><div className="settings-card"><div><b>Koneksi backend</b><p>API: {API}</p></div><button className="outline-btn" onClick={()=>api("/api/health").then(r=>notify(`API aktif · ${r.database}`)).catch(()=>notify("Backend belum aktif"))}>Tes koneksi</button></div><div className="settings-card"><div><b>Penyimpanan</b><p>Supabase jika dikonfigurasi, memori demo sebagai fallback.</p></div></div></section>}
+      {page==="settings" && <section className="content"><div className="eyebrow muted">PREFERENCES</div><h1>Pengaturan</h1><div className="settings-card"><div><b>Abee Motion Verse</b><p>Personal workspace · MVP 0.1.0</p></div><span className="pill">Tahap 1</span></div><div className="settings-card"><div><b>Koneksi backend</b><p>API: {API}</p></div><button className="outline-btn" onClick={()=>api("/api/health").then(r=>notify(`API aktif · ${r.database}`)).catch(()=>notify("Backend belum aktif"))}>Tes koneksi</button></div><div className="settings-card"><div><b>Penyimpanan</b><p>Supabase jika dikonfigurasi, memori demo sebagai fallback.</p></div></div></section>}
     </main>
 
     <nav className="mobile-nav">{nav.map(item=><button key={item.id} className={page===item.id?"selected":""} onClick={()=>setPage(item.id)}><item.icon size={19}/><span>{item.label}</span></button>)}</nav>
