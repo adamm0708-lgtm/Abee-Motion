@@ -19,7 +19,38 @@ export default function Editor({ project, onBack }) {
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
+  const uploadInputRef = useRef(null);
   const active = layers.find(l => l.id === selected) || layers[0];
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      window.alert("Pilih file gambar seperti JPG, PNG, atau WEBP.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      window.alert("Ukuran gambar maksimal 8 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const id = Math.max(0, ...layers.map(layer => layer.id)) + 1;
+      const item = {
+        id, name: file.name.replace(/\\.[^.]+$/, "") || "Gambar",
+        type: "image", text: "", imageSrc: reader.result,
+        x: 50, y: 50, scale: 1, rotation: 0, opacity: 100,
+        color: "#ffffff", start: time, end: duration,
+        visible: true, locked: false, ease: "power2.inOut",
+        keyframes: [{ t: time, x: 50, y: 50, scale: 1, rotation: 0, opacity: 100 }]
+      };
+      setLayers(old => [...old, item]);
+      setSelected(id);
+      setTab("design");
+    };
+    reader.onerror = () => window.alert("Gagal membaca gambar. Coba file lain.");
+    reader.readAsDataURL(file);
+  };
   const handleObjectPointerDown = (event, layer) => {
     setSelected(layer.id);
     if (layer.locked || playing || layer.type === "audio") return;
@@ -106,10 +137,10 @@ export default function Editor({ project, onBack }) {
   return <section className="pro-editor">
     <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · AUTO WORKSPACE</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
     <div className="pro-workspace">
-      <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button onClick={()=>addLayer("image")}><Image/><span>Gambar</span></button><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
+      <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button onClick={()=>uploadInputRef.current?.click()}><Image/><span>Upload</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
       <div className="pro-stage">
         <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
-        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<span>▧ MEDIA</span>:<span>♫ AUDIO</span>}</div>)}</div></div>
+        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</div></div>
         <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input type="range" min="0" max={duration} step=".1" value={time} onChange={e=>{setTime(Number(e.target.value));setPlaying(false);timelineRef.current?.pause().time(Number(e.target.value), false)}}/><span>{ratio}</span></div>
       </div>
       <aside className="pro-inspector"><div className="pro-tabs"><button className={tab==="design"?"on":""} onClick={()=>setTab("design")}>Properties</button><button className={tab==="layers"?"on":""} onClick={()=>setTab("layers")}>Layers</button></div>
