@@ -16,29 +16,47 @@ export default function Editor({ project, onBack }) {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState("design");
+  const [uploading, setUploading] = useState(false);
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
   const uploadInputRef = useRef(null);
   const active = layers.find(l => l.id === selected) || layers[0];
-  const handleImageUpload = (event) => {
+  const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      window.alert("Pilih file gambar seperti JPG, PNG, atau WEBP.");
+    if (!file.type.startsWith("image/") || !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
+      window.alert("Pilih gambar JPG, PNG, WEBP, atau GIF.");
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      window.alert("Ukuran gambar maksimal 8 MB.");
+    if (file.size > 4 * 1024 * 1024) {
+      window.alert("Ukuran gambar maksimal 4 MB untuk upload cloud.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
+    if (!project?.id) {
+      window.alert("Simpan proyek terlebih dahulu sebelum upload gambar.");
+      return;
+    }
+    setUploading(true);
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+      const response = await fetch(`${apiBase}/api/projects/${project.id}/assets`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-File-Name": encodeURIComponent(file.name),
+          "X-File-Type": file.type
+        },
+        body: file
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Upload gambar gagal.");
+      const asset = result.data;
       const id = Math.max(0, ...layers.map(layer => layer.id)) + 1;
       const item = {
         id, name: file.name.replace(/\.[^.]+$/, "") || "Gambar",
-        type: "image", text: "", imageSrc: reader.result,
+        type: "image", text: "", imageSrc: asset.file_url, assetId: asset.id,
         x: 50, y: 50, scale: 1, rotation: 0, opacity: 100,
         color: "#ffffff", start: time, end: duration,
         visible: true, locked: false, ease: "power2.inOut",
@@ -47,9 +65,12 @@ export default function Editor({ project, onBack }) {
       setLayers(old => [...old, item]);
       setSelected(id);
       setTab("design");
-    };
-    reader.onerror = () => window.alert("Gagal membaca gambar. Coba file lain.");
-    reader.readAsDataURL(file);
+      window.alert("Gambar berhasil disimpan ke cloud proyek.");
+    } catch (error) {
+      window.alert(error.message || "Upload gambar gagal.");
+    } finally {
+      setUploading(false);
+    }
   };
   const handleObjectPointerDown = (event, layer) => {
     setSelected(layer.id);
@@ -137,7 +158,7 @@ export default function Editor({ project, onBack }) {
   return <section className="pro-editor">
     <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · AUTO WORKSPACE</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
     <div className="pro-workspace">
-      <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button onClick={()=>uploadInputRef.current?.click()}><Image/><span>Upload</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
+      <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
       <div className="pro-stage">
         <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
         <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</div></div>
