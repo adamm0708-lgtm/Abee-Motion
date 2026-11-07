@@ -163,9 +163,35 @@ app.delete("/api/projects/:id", async (req, res) => {
   return res.json({ ok: true });
 });
 
-// AI and rendering endpoints are intentionally not activated in MVP stage 1.
-app.post("/api/ai/generate", (_req, res) => res.status(501).json({ error: "AI generator akan diaktifkan pada tahap 2." }));
-app.post("/api/render", (_req, res) => res.status(501).json({ error: "Cloud rendering akan diaktifkan pada tahap 4." }));
+// AI generator remains a later development stage.
+app.post("/api/ai/generate", (_req, res) => res.status(501).json({ error: "AI generator belum diaktifkan." }));
+
+app.get("/api/projects/:id/renders", async (req,res) => {
+  if (!supabase) return res.status(503).json({ error:"Supabase belum dikonfigurasi." });
+  const { data,error } = await supabase.from("renders").select("*").eq("project_id",req.params.id).order("created_at",{ascending:false}).limit(10);
+  if (error) return res.status(500).json({ error:error.message });
+  return res.json({ data });
+});
+
+app.post("/api/render", async (req,res) => {
+  const projectId = String(req.body?.projectId || "");
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) return res.status(400).json({ error:"projectId tidak valid." });
+  if (!process.env.RENDERER_URL || !process.env.RENDER_SECRET) {
+    return res.status(503).json({ error:"Renderer belum dikonfigurasi di backend." });
+  }
+  try {
+    const response = await fetch(`${process.env.RENDERER_URL.replace(/\/$/,"")}/render`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "x-render-secret":process.env.RENDER_SECRET },
+      body:JSON.stringify({ projectId })
+    });
+    const result = await response.json().catch(()=>({}));
+    if (!response.ok) return res.status(response.status).json({ error:result.error || "Gagal mengirim pekerjaan render." });
+    return res.status(202).json({ ok:true,status:"accepted",message:"Render masuk antrean.", ...result });
+  } catch (error) {
+    return res.status(502).json({ error:"Tidak dapat menghubungi server renderer: "+error.message });
+  }
+});
 
 if (!process.env.VERCEL) {
   app.listen(port, () => {
