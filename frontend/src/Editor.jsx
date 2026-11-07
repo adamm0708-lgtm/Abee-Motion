@@ -67,6 +67,35 @@ export default function Editor({ project, onBack }) {
     refreshHistory(value => value + 1);
   };
 
+  useEffect(() => {
+    const handleEditorShortcuts = (event) => {
+      const target = event.target;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping = target?.isContentEditable || ["input", "textarea", "select"].includes(tag);
+      if (isTyping) return;
+
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (modifier && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
+      if (event.code === "Space" && !modifier && !event.altKey) {
+        if (["button", "a"].includes(tag)) return;
+        event.preventDefault();
+        setPlaying(value => !value);
+      }
+    };
+    window.addEventListener("keydown", handleEditorShortcuts);
+    return () => window.removeEventListener("keydown", handleEditorShortcuts);
+  }, [layers, playing]);
+
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
