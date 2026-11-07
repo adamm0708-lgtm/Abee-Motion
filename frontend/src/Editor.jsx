@@ -22,6 +22,7 @@ export default function Editor({ project, onBack }) {
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
+  const clipDragRef = useRef(null);
   const uploadInputRef = useRef(null);
   const active = layers.find(l => l.id === selected) || layers[0];
 
@@ -193,6 +194,42 @@ export default function Editor({ project, onBack }) {
     const fraction = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     seekTime(fraction * duration);
   };
+  const startClipDrag = (event, layer) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const edge = event.target?.dataset?.edge || "move";
+    const line = event.currentTarget.parentElement;
+    const rect = line.getBoundingClientRect();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    clipDragRef.current = {
+      id: layer.id, edge, pointerId: event.pointerId, startX: event.clientX,
+      width: rect.width, originalStart: Number(layer.start || 0),
+      originalEnd: Number(layer.end ?? duration)
+    };
+    setSelected(layer.id);
+  };
+  const moveClipDrag = (event) => {
+    const drag = clipDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const delta = (event.clientX - drag.startX) / Math.max(1, drag.width) * duration;
+    const minLength = 0.2;
+    let start = drag.originalStart;
+    let end = drag.originalEnd;
+    if (drag.edge === "left") start = Math.max(0, Math.min(drag.originalEnd - minLength, drag.originalStart + delta));
+    else if (drag.edge === "right") end = Math.max(drag.originalStart + minLength, Math.min(duration, drag.originalEnd + delta));
+    else {
+      const length = drag.originalEnd - drag.originalStart;
+      start = Math.max(0, Math.min(duration - length, drag.originalStart + delta));
+      end = start + length;
+    }
+    start = Number(start.toFixed(2));
+    end = Number(end.toFixed(2));
+    setLayers(old => old.map(layer => layer.id === drag.id ? { ...layer, start, end } : layer));
+  };
+  const finishClipDrag = (event) => {
+    if (!clipDragRef.current || clipDragRef.current.pointerId !== event.pointerId) return;
+    clipDragRef.current = null;
+  };
   const update = (patch) => setLayers(old => old.map(l => l.id === selected ? { ...l, ...patch } : l));
   const duplicateActive = () => {
     if (!active) return;
@@ -282,6 +319,6 @@ export default function Editor({ project, onBack }) {
         {tab==="design" ? <>{active ? <><div className="pro-selected"><b>{active.name}</b><small>{active.type.toUpperCase()} LAYER</small></div><label className="pro-field">Nama layer<input value={active.name || ""} onChange={e=>update({name:e.target.value})}/></label><button className="pro-duplicate" onClick={duplicateActive}><Copy size={14}/> Duplikat layer</button>{active.type==="text"&&<label className="pro-field">Konten teks<input value={active.text} onChange={e=>update({text:e.target.value})}/></label>}<label className="pro-field">Warna<input type="color" value={active.color} onChange={e=>update({color:e.target.value})}/></label><div className="pro-field-grid"><label className="pro-field">Posisi X<input type="number" value={active.x} onChange={e=>update({x:Number(e.target.value)})}/></label><label className="pro-field">Posisi Y<input type="number" value={active.y} onChange={e=>update({y:Number(e.target.value)})}/></label><label className="pro-field">Skala<input type="number" step=".1" value={active.scale} onChange={e=>update({scale:Number(e.target.value)})}/></label><label className="pro-field">Rotasi<input type="number" value={active.rotation} onChange={e=>update({rotation:Number(e.target.value)})}/></label></div><label className="pro-field">Opacity · {active.opacity}%<input type="range" min="0" max="100" value={active.opacity} onChange={e=>update({opacity:Number(e.target.value)})}/></label><div className="pro-field-grid"><label className="pro-field">Mulai · detik<input type="number" min="0" max={duration} step=".1" value={Number(active.start || 0)} onChange={e=>updateLayerTiming("start",e.target.value)}/></label><label className="pro-field">Selesai · detik<input type="number" min={Number(active.start || 0)+0.1} max={duration} step=".1" value={Number(active.end ?? duration)} onChange={e=>updateLayerTiming("end",e.target.value)}/></label></div><label className="pro-field">Easing<select value={active.ease || "power2.inOut"} onChange={e=>update({ease:e.target.value})}><option value="none">Linear</option><option value="power2.in">Ease In</option><option value="power2.out">Ease Out</option><option value="power2.inOut">Ease In Out</option><option value="back.out(1.7)">Back Out</option></select></label><div className="pro-key-actions"><button className={"pro-key "+(active.keyframes.some(k => Math.abs(k.t-time) < 0.05)?"key-on":"")} onClick={setKeyframe}><Diamond size={15}/> {active.keyframes.some(k => Math.abs(k.t-time) < 0.05)?"Perbarui keyframe":"Simpan keyframe"} · {time.toFixed(1)}s</button>{active.keyframes.some(k => Math.abs(k.t-time) < 0.05)&&<button className="pro-key-remove" onClick={removeKeyframe}><Trash2 size={14}/> Hapus</button>}</div></> : <p>Pilih layer untuk mengedit.</p>}</> : <div className="pro-layer-list">{layers.map(l=><div key={l.id} className={"pro-layer-row "+(selected===l.id?"sel":"")}><button onClick={()=>setSelected(l.id)}><span className="pro-layer-icon">{l.type==="text"?<Type size={14}/>:l.type==="shape"?<Square size={14}/>:l.type==="image"?<Image size={14}/>:<Music2 size={14}/>}</span><span>{l.name}</span></button><button title="Tampilkan/sembunyikan" onClick={()=>setLayers(old=>old.map(x=>x.id===l.id?{...x,visible:!x.visible}:x))}>{l.visible?<Eye size={14}/>:<EyeOff size={14}/>}</button><button title="Kunci/buka" onClick={()=>setLayers(old=>old.map(x=>x.id===l.id?{...x,locked:!x.locked}:x))}>{l.locked?<Lock size={14}/>:<Unlock size={14}/>}</button><button title="Hapus layer" onClick={()=>{setLayers(old=>old.filter(x=>x.id!==l.id));if(selected===l.id)setSelected(layers.find(x=>x.id!==l.id)?.id)}}><Trash2 size={14}/></button></div>)}</div>}
       </aside>
     </div>
-    <div className="pro-timeline"><div className="pro-timeline-head"><div><b>TIMELINE</b><small>{layers.length} LAYERS</small></div><label>Durasi <select value={duration} onChange={e=>{setDuration(Number(e.target.value));setTime(Math.min(time,Number(e.target.value)))}}>{[10,15,20,30,60].map(n=><option key={n}>{n}</option>)}</select> detik</label><button onClick={()=>addLayer("text")}><Plus size={14}/> Layer</button></div><div className="pro-ruler"><span>0s</span>{Array.from({length:Math.max(2,Math.ceil(duration/5))},(_,i)=><span key={i}>{Math.min(duration,(i+1)*5)}s</span>)}</div>{layers.map(l=><div className="pro-track" key={l.id}><button onClick={()=>setSelected(l.id)}>{l.name}</button><div className="pro-track-line" onPointerDown={seekFromTrack}><button className="pro-clip" style={{left:(l.start/duration*100)+"%",width:((l.end-l.start)/duration*100)+"%"}} onClick={()=>setSelected(l.id)}>{l.type.toUpperCase()}</button>{l.keyframes.map(k=><button key={k.t} className="pro-diamond" style={{left:(k.t/duration*100)+"%"}} onClick={()=>setTime(k.t)} title={"Keyframe "+k.t+"s"}/>)}</div></div>)}<div className="pro-timeline-foot">Geser playhead untuk memilih waktu · Ketuk berlian untuk menuju keyframe</div></div>
+    <div className="pro-timeline"><div className="pro-timeline-head"><div><b>TIMELINE</b><small>{layers.length} LAYERS</small></div><label>Durasi <select value={duration} onChange={e=>{setDuration(Number(e.target.value));setTime(Math.min(time,Number(e.target.value)))}}>{[10,15,20,30,60].map(n=><option key={n}>{n}</option>)}</select> detik</label><button onClick={()=>addLayer("text")}><Plus size={14}/> Layer</button></div><div className="pro-ruler"><span>0s</span>{Array.from({length:Math.max(2,Math.ceil(duration/5))},(_,i)=><span key={i}>{Math.min(duration,(i+1)*5)}s</span>)}</div>{layers.map(l=><div className="pro-track" key={l.id}><button onClick={()=>setSelected(l.id)}>{l.name}</button><div className="pro-track-line" onPointerDown={seekFromTrack}><button className="pro-clip" style={{left:(l.start/duration*100)+"%",width:((l.end-l.start)/duration*100)+"%"}} onPointerDown={e=>startClipDrag(e,l)} onPointerMove={moveClipDrag} onPointerUp={finishClipDrag} onPointerCancel={finishClipDrag} onClick={e=>{e.stopPropagation();setSelected(l.id)}} title="Geser clip; tarik tepi kiri/kanan untuk mengubah durasi"><span className="pro-clip-handle left" data-edge="left"/><span className="pro-clip-label">{l.type.toUpperCase()}</span><span className="pro-clip-handle right" data-edge="right"/></button>{l.keyframes.map(k=><button key={k.t} className="pro-diamond" style={{left:(k.t/duration*100)+"%"}} onClick={()=>setTime(k.t)} title={"Keyframe "+k.t+"s"}/>)}</div></div>)}<div className="pro-timeline-foot">Geser playhead untuk memilih waktu · Ketuk berlian untuk menuju keyframe</div></div>
   </section>;
 }
