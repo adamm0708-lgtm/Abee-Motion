@@ -328,29 +328,171 @@ export default function Editor({ project, onBack }) {
     dragRef.current = null;
   };
   const handleExport = async () => {
-    if (renderUrl) { window.open(renderUrl, "_blank", "noopener,noreferrer"); return; }
-    if (!project?.id || rendering) return;
-    setRendering(true); setRenderState("Menyiapkan...");
+    if (rendering) return;
+    setRendering(true);
+    setRenderState("Menyiapkan...");
+    let audioElements = [];
+    let audioStreams = [];
+    let animationFrame = 0;
+    let recorder = null;
     try {
-      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
-      const startResponse = await fetch(apiBase + "/api/render", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ projectId:project.id }) });
-      const startResult = await startResponse.json().catch(()=>({}));
-      if (!startResponse.ok) throw new Error(startResult.error || "Gagal memulai render.");
-      setRenderState("Merender...");
-      for (let attempt=0; attempt<180; attempt++) {
-        await new Promise(resolve=>window.setTimeout(resolve,3000));
-        const statusResponse = await fetch(apiBase + "/api/projects/" + project.id + "/renders");
-        const statusResult = await statusResponse.json().catch(()=>({}));
-        if (!statusResponse.ok) throw new Error(statusResult.error || "Gagal memeriksa status render.");
-        const latest = statusResult.data?.[0];
-        if (latest?.status === "completed" && latest.output_url) { setRenderUrl(latest.output_url); setRenderState("Unduh MP4"); return; }
-        if (latest?.status === "failed") throw new Error(latest.error_message || "Rendering gagal.");
-        setRenderState(latest?.progress ? "Render " + latest.progress + "%" : "Merender...");
+      if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+        throw new Error("Browser ini belum mendukung ekspor video lokal. Coba Chrome versi terbaru.");
       }
-      setRenderState("Masih diproses");
-      window.alert("Render masih berjalan di server. Tekan Export lagi beberapa saat nanti untuk memeriksa hasil terbaru.");
-    } catch (error) { setRenderState("Export"); window.alert(error.message || "Ekspor MP4 gagal."); }
-    finally { setRendering(false); }
+      const dimensions = ratio === "16:9" ? [1280,720] : ratio === "1:1" ? [1080,1080] : [720,1280];
+      const [width,height] = dimensions;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas tidak dapat dibuat.");
+      const imageCache = new Map();
+      const visibleLayers = layers.filter(layer => layer.visible && layer.type !== "audio");
+      await Promise.all(visibleLayers.filter(layer => layer.type === "image" && layer.imageSrc).map(layer => new Promise((resolve,reject) => {
+        const img = new window.Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => { imageCache.set(layer.id,img); resolve(); };
+        img.onerror = () => reject(new Error("Gagal memuat gambar: " + (layer.name || "gambar") + ". Periksa akses file cloud."));
+        img.src = layer.imageSrc;
+      })));
+      const audioLayers = layers.filter(layer => layer.visible && layer.type === "audio" && layer.audioSrc);
+      const audioTracks = [];
+      for (const layer of audioLayers) {
+        const audio = new Audio(layer.audioSrc);
+        audio.crossOrigin = "anonymous";
+        audio.preload = "auto";
+        audio.volume = Math.max(0,Math.min(1,Number(layer.volume ?? 80)/100));
+        audioElements.push({audio,layer});
+        await new Promise(resolve => {
+          if (audio.readyState >= 1) resolve();
+          else { audio.addEventListener("loadedmetadata",resolve,{once:true}); audio.addEventListener("error",resolve,{once:true}); }
+        });
+        if (typeof audio.captureStream === "function") {
+          const stream = audio.captureStream();
+          audioStreams.push(stream);
+          stream.getAudioTracks().forEach(track => audioTracks.push(track));
+        }
+      }
+      const stream = canvas.captureStream(30);
+      audioTracks.forEach(track => stream.addTrack(track));
+      const mimeType = ["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"].find(type => MediaRecorder.isTypeSupported(type));
+      if (!mimeType) throw new Error("Browser tidak menyediakan encoder WebM yang didukung.");
+      const chunks = [];
+      recorder = new MediaRecorder(stream,{mimeType,videoBitsPerSecond:5000000});
+      const stopped = new Promise((resolve,reject) => {
+        recorder.ondataavailable = event => { if(event.data?.size) chunks.push(event.data); };
+        recorder.onerror = () => reject(new Error("Perekaman video gagal."));
+        recorder.onstop = resolve;
+      });
+      const easeValue = (value,ease) => {
+        const t = Math.max(0,Math.min(1,value));
+        if (ease === "power2.in") return t*t;
+        if (ease === "power2.out") return 1-(1-t)*(1-t);
+        if (ease === "power2.inOut") return t<.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2;
+        return t;
+      };
+      const stateAt = (layer,t) => {
+        const frames = [...(layer.keyframes || [])].sort((a,b)=>a.t-b.t);
+        if (!frames.length) return layer;
+        if (t <= frames[0].t) return frames[0];
+        if (t >= frames[frames.length-1].t) return frames[frames.length-1];
+        const index = frames.findIndex((frame,i)=>i<frames.length-1 && t>=frame.t && t<=frames[i+1].t);
+        const a=frames[index], b=frames[index+1];
+        const p=easeValue((t-a.t)/Math.max(.001,b.t-a.t),layer.ease);
+        return Object.fromEntries(["x","y","scale","rotation","opacity"].map(key=>[key,(Number(a[key] ?? layer[key] ?? 0)*(1-p))+(Number(b[key] ?? layer[key] ?? 0)*p)]));
+      };
+      const drawFrame = (t) => {
+        ctx.clearRect(0,0,width,height);
+        ctx.fillStyle="#11131a"; ctx.fillRect(0,0,width,height);
+        visibleLayers.forEach(layer => {
+          const begin=Number(layer.start||0), finish=Number(layer.end??duration);
+          if(t<begin || t>finish) return;
+          const state=stateAt(layer,t);
+          const x=Number(state.x??layer.x??50)/100*width;
+          const y=Number(state.y??layer.y??50)/100*height;
+          const scale=Number(state.scale??layer.scale??1);
+          ctx.save();
+          ctx.translate(x,y);
+          ctx.rotate(Number(state.rotation??layer.rotation??0)*Math.PI/180);
+          ctx.globalAlpha=Math.max(0,Math.min(1,Number(state.opacity??layer.opacity??100)/100));
+          if(layer.type==="text") {
+            const fontSize=Math.max(18,Math.round(width*.075*scale));
+            ctx.font="700 "+fontSize+"px Arial, sans-serif";
+            ctx.textAlign="center"; ctx.textBaseline="middle";
+            ctx.fillStyle=layer.color||"#ffffff";
+            ctx.shadowColor="rgba(0,0,0,.35)"; ctx.shadowBlur=8;
+            ctx.fillText(String(layer.text||"Teks baru"),0,0,width*.85);
+          } else if(layer.type==="shape") {
+            const radius=Math.max(20,width*.12*scale);
+            ctx.fillStyle=layer.color||"#d9b46a";
+            ctx.beginPath(); ctx.arc(0,0,radius,0,Math.PI*2); ctx.fill();
+          } else if(layer.type==="image") {
+            const img=imageCache.get(layer.id);
+            if(img) {
+              const maxW=width*.72*scale, maxH=height*.72*scale;
+              const factor=Math.min(maxW/img.width,maxH/img.height);
+              const w=img.width*factor,h=img.height*factor;
+              ctx.drawImage(img,-w/2,-h/2,w,h);
+            }
+          }
+          ctx.restore();
+        });
+      };
+      setRenderState("Merekam 0%");
+      recorder.start(250);
+      audioElements.forEach(({audio,layer}) => {
+        const offset=Math.max(0,Number(layer.start||0));
+        try { audio.currentTime=0; } catch {}
+        if(offset===0) audio.play().catch(()=>{});
+      });
+      const started=performance.now();
+      await new Promise((resolve,reject) => {
+        const tick=now => {
+          const elapsed=(now-started)/1000;
+          const current=Math.min(duration,elapsed);
+          drawFrame(current);
+          audioElements.forEach(({audio,layer}) => {
+            const begin=Number(layer.start||0), finish=Number(layer.end??duration);
+            if(current>=begin && current<finish) {
+              const offset=current-begin;
+              if(Math.abs(audio.currentTime-offset)>.35) { try { audio.currentTime=offset; } catch {} }
+              const length=finish-begin, fadeIn=Number(layer.fadeIn||0), fadeOut=Number(layer.fadeOut||0);
+              let volume=Math.max(0,Math.min(1,Number(layer.volume??80)/100));
+              if(fadeIn>0) volume*=Math.min(1,offset/fadeIn);
+              if(fadeOut>0) volume*=Math.min(1,(finish-current)/fadeOut);
+              audio.volume=volume;
+              if(audio.paused) audio.play().catch(()=>{});
+            } else if(!audio.paused) audio.pause();
+          });
+          setRenderState("Merekam "+Math.min(100,Math.round(current/duration*100))+"%");
+          if(elapsed>=duration) resolve();
+          else animationFrame=requestAnimationFrame(tick);
+        };
+        animationFrame=requestAnimationFrame(tick);
+      });
+      audioElements.forEach(({audio})=>audio.pause());
+      recorder.stop();
+      await stopped;
+      const blob=new Blob(chunks,{type:mimeType});
+      if(!blob.size) throw new Error("Hasil rekaman kosong.");
+      const url=URL.createObjectURL(blob);
+      const link=document.createElement("a");
+      link.href=url;
+      link.download=(project?.title||"bang-motion-video").replace(/[^a-z0-9-_]/gi,"_")+".webm";
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),60000);
+      setRenderState("Export WebM");
+      window.alert("Video berhasil diekspor dalam format WebM. Simpan file dari browser.");
+    } catch(error) {
+      if(recorder && recorder.state!=="inactive") { try { recorder.stop(); } catch {} }
+      window.alert(error.message || "Ekspor lokal gagal.");
+      setRenderState("Export");
+    } finally {
+      cancelAnimationFrame(animationFrame);
+      audioElements.forEach(({audio})=>{audio.pause();audio.src="";});
+      audioStreams.forEach(stream=>stream.getTracks().forEach(track=>track.stop()));
+      setRendering(false);
+    }
   };
   const seekTime = (value) => {
     const next = Math.max(0, Math.min(duration, Number(value) || 0));
