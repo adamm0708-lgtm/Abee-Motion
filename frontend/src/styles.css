@@ -17,3 +17,7 @@
 
 .pro-duplicate{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;border:1px solid #46536b;background:#18243a;color:#c6d2e6;border-radius:7px;padding:9px;margin:0 0 8px;font-size:10px}
 .pro-duplicate:hover{border-color:#c5a66b;color:#f0d69e}
+
+.pro-time-scrubber{cursor:pointer;touch-action:pan-x;accent-color:#d9b46a;min-height:28px;position:relative;z-index:5;pointer-events:auto}
+.pro-track-line{cursor:crosshair;touch-action:pan-y}
+.pro-clip,.pro-diamond{z-index:3}
