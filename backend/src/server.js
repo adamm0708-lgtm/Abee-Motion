@@ -72,7 +72,7 @@ app.post("/api/projects", async (req, res) => {
   return res.status(201).json({ data: payload });
 });
 
-app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stream", limit: "8mb" }), async (req, res) => {
+app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stream", limit: "4mb" }), async (req, res) => {
   if (!supabase) return res.status(503).json({ error: "Supabase belum dikonfigurasi." });
   const projectId = req.params.id;
   const fileName = String(req.headers["x-file-name"] || "image-upload").slice(0, 180);
@@ -80,7 +80,7 @@ app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stre
   if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mimeType)) {
     return res.status(400).json({ error: "Format gambar tidak didukung." });
   }
-  if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 8 * 1024 * 1024) {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 4 * 1024 * 1024) {
     return res.status(400).json({ error: "File kosong atau melebihi 8 MB." });
   }
   const { data: project, error: projectError } = await supabase.from("projects").select("id").eq("id", projectId).maybeSingle();
