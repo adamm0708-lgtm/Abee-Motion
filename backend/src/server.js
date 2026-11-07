@@ -84,11 +84,12 @@ app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stre
   const projectId = req.params.id;
   const fileName = String(req.headers["x-file-name"] || "image-upload").slice(0, 180);
   const mimeType = String(req.headers["x-file-type"] || "");
-  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mimeType)) {
-    return res.status(400).json({ error: "Format gambar tidak didukung." });
-  }
+  const imageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  const audioTypes = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/ogg", "audio/mp4", "audio/aac"];
+  const assetType = imageTypes.includes(mimeType) ? "image" : audioTypes.includes(mimeType) ? "audio" : null;
+  if (!assetType) return res.status(400).json({ error: "Format file tidak didukung." });
   if (!Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > 4 * 1024 * 1024) {
-    return res.status(400).json({ error: "File kosong atau melebihi 8 MB." });
+    return res.status(400).json({ error: "File kosong atau melebihi 4 MB." });
   }
   const { data: project, error: projectError } = await supabase.from("projects").select("id").eq("id", projectId).maybeSingle();
   if (projectError || !project) return res.status(404).json({ error: "Proyek tidak ditemukan." });
@@ -106,7 +107,7 @@ app.post("/api/projects/:id/assets", express.raw({ type: "application/octet-stre
     project_id: projectId,
     file_name: fileName,
     file_url: publicData.publicUrl,
-    asset_type: "image",
+    asset_type: assetType,
     metadata: { mime_type: mimeType, size: req.body.length, storage_path: objectPath }
   }).select().single();
 
