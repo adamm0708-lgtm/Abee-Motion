@@ -25,6 +25,7 @@ export default function Editor({ project, onBack }) {
   const clipDragRef = useRef(null);
   const uploadInputRef = useRef(null);
   const audioInputRef = useRef(null);
+  const audioRefs = useRef({});
   const active = layers.find(l => l.id === selected) || layers[0];
 
   useEffect(() => {
@@ -338,6 +339,35 @@ export default function Editor({ project, onBack }) {
     const tl = timelineRef.current;
     if (tl) playing ? tl.play() : tl.pause();
   }, [playing, layers]);
+  useEffect(() => {
+    layers.filter(layer => layer.type === "audio").forEach(layer => {
+      const audio = audioRefs.current[layer.id];
+      if (!audio) return;
+      const start = Number(layer.start || 0);
+      const end = Number(layer.end ?? duration);
+      const inRange = time >= start && time < end;
+      audio.volume = Math.max(0, Math.min(1, Number(layer.volume ?? 80) / 100));
+      if (playing && inRange) {
+        const offset = Math.max(0, time - start);
+        if (Math.abs((audio.currentTime || 0) - offset) > 0.45 && audio.readyState >= 1) {
+          try { audio.currentTime = offset; } catch {}
+        }
+        if (audio.paused) audio.play().catch(error => console.warn("Audio playback:", error));
+      } else {
+        if (!audio.paused) audio.pause();
+        if (!playing && audio.readyState >= 1) {
+          const offset = Math.max(0, time - start);
+          if (Math.abs((audio.currentTime || 0) - offset) > 0.15) {
+            try { audio.currentTime = offset; } catch {}
+          }
+        }
+      }
+    });
+    return () => {
+      if (!playing) return;
+      layers.filter(layer => layer.type === "audio").forEach(layer => audioRefs.current[layer.id]?.pause());
+    };
+  }, [time, playing, layers, duration]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
     <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
@@ -345,7 +375,7 @@ export default function Editor({ project, onBack }) {
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button disabled={uploading} onClick={()=>audioInputRef.current?.click()}><Music2/><span>{uploading?"Upload...":"Audio"}</span></button><input ref={audioInputRef} type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac" hidden onChange={handleAudioUpload}/></aside>
       <div className="pro-stage">
         <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
-        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</div></div>
+        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{layers.filter(layer=>layer.type==="audio"&&layer.audioSrc).map(layer=><audio key={layer.id} ref={node=>{audioRefs.current[layer.id]=node}} src={layer.audioSrc} preload="auto"/>) }{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</div></div>
         <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input className="pro-time-scrubber" type="range" min="0" max={duration} step=".1" value={Math.min(time,duration)} onInput={e=>seekTime(e.currentTarget.value)} onChange={e=>seekTime(e.currentTarget.value)} aria-label="Geser waktu video"/><span>{ratio}</span></div>
       </div>
       <aside className="pro-inspector"><div className="pro-tabs"><button className={tab==="design"?"on":""} onClick={()=>setTab("design")}>Properties</button><button className={tab==="layers"?"on":""} onClick={()=>setTab("layers")}>Layers</button></div>
