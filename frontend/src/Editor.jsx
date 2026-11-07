@@ -18,7 +18,35 @@ export default function Editor({ project, onBack }) {
   const [tab, setTab] = useState("design");
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
+  const dragRef = useRef(null);
   const active = layers.find(l => l.id === selected) || layers[0];
+  const handleObjectPointerDown = (event, layer) => {
+    setSelected(layer.id);
+    if (layer.locked || playing || layer.type === "audio") return;
+    const canvas = event.currentTarget.parentElement;
+    const rect = canvas.getBoundingClientRect();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    timelineRef.current?.pause();
+    setPlaying(false);
+    dragRef.current = { id: layer.id, rect, node: event.currentTarget, x: layer.x, y: layer.y, pointerId: event.pointerId };
+    event.preventDefault();
+  };
+  const handleObjectPointerMove = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const x = Math.max(0, Math.min(100, ((event.clientX - drag.rect.left) / drag.rect.width) * 100));
+    const y = Math.max(0, Math.min(100, ((event.clientY - drag.rect.top) / drag.rect.height) * 100));
+    drag.x = Number(x.toFixed(1));
+    drag.y = Number(y.toFixed(1));
+    drag.node.style.left = drag.x + "%";
+    drag.node.style.top = drag.y + "%";
+  };
+  const finishObjectDrag = (event) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setLayers(old => old.map(layer => layer.id === drag.id ? { ...layer, x: drag.x, y: drag.y } : layer));
+    dragRef.current = null;
+  };
   const update = (patch) => setLayers(old => old.map(l => l.id === selected ? { ...l, ...patch } : l));
   const addLayer = (type) => {
     const id = Math.max(0, ...layers.map(l => l.id)) + 1;
@@ -72,7 +100,7 @@ export default function Editor({ project, onBack }) {
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button onClick={()=>addLayer("image")}><Image/><span>Gambar</span></button><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
       <div className="pro-stage">
         <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
-        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<span>▧ MEDIA</span>:<span>♫ AUDIO</span>}</div>)}</div></div>
+        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<span>▧ MEDIA</span>:<span>♫ AUDIO</span>}</div>)}</div></div>
         <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input type="range" min="0" max={duration} step=".1" value={time} onChange={e=>{setTime(Number(e.target.value));setPlaying(false);timelineRef.current?.pause().time(Number(e.target.value), false)}}/><span>{ratio}</span></div>
       </div>
       <aside className="pro-inspector"><div className="pro-tabs"><button className={tab==="design"?"on":""} onClick={()=>setTab("design")}>Properties</button><button className={tab==="layers"?"on":""} onClick={()=>setTab("layers")}>Layers</button></div>
