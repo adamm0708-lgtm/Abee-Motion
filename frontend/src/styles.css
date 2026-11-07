@@ -24,7 +24,7 @@
 
 .pro-clip{touch-action:none;user-select:none;cursor:grab;display:flex;align-items:center;justify-content:center;padding:0 9px}
 .pro-clip:active{cursor:grabbing}
-.pro-clip-label{pointer-events:none}
+.pro-clip-label{pointer-events:none}.pro-waveform{position:absolute;inset:2px 10px;display:flex;align-items:center;justify-content:space-around;gap:1px;opacity:.72;pointer-events:none;overflow:hidden}.pro-waveform i{display:block;flex:1;min-width:1px;max-width:4px;border-radius:2px;background:#f0d38e}.pro-clip-label{position:relative;z-index:1;text-shadow:0 1px 3px #20180d;background:#5d492b99;padding:1px 3px;border-radius:2px}
 .pro-clip-handle{position:absolute;top:0;bottom:0;width:9px;background:#f0d38e;opacity:.9;cursor:ew-resize;z-index:4}
 .pro-clip-handle.left{left:0;border-radius:4px 0 0 4px}
 .pro-clip-handle.right{right:0;border-radius:0 4px 4px 0}
