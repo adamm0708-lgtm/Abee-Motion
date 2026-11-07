@@ -182,13 +182,9 @@ app.post("/render",async(req,res)=>{
   if (!process.env.RENDER_SECRET || req.headers["x-render-secret"] !== process.env.RENDER_SECRET) return res.status(401).json({error:"Unauthorized"});
   const projectId = String(req.body?.projectId || "");
   if (!/^[0-9a-f-]{36}$/i.test(projectId)) return res.status(400).json({error:"projectId tidak valid."});
-  try {
-    const result = await renderProject(projectId);
-    return res.json({ok:true,...result});
-  } catch (error) {
-    console.error("Render error:",error);
-    return res.status(500).json({error:error.message || "Rendering gagal."});
-  }
+  if (!supabase) return res.status(503).json({error:"Supabase belum dikonfigurasi."});
+  res.status(202).json({ok:true,status:"accepted",message:"Render diterima. Pantau status melalui API proyek."});
+  renderProject(projectId).catch(error=>console.error("Render error:",error));
 });
 
 const port = process.env.PORT || 8080;
