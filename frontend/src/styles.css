@@ -35,3 +35,6 @@
 .pro-diamond{cursor:pointer;touch-action:manipulation}
 
 .pro-audio-preview{width:100%;height:34px;display:block;filter:saturate(.8)}
+
+.pro-history-actions{display:flex;gap:5px}.pro-history-actions button{display:grid;place-items:center;width:30px;height:30px;border:1px solid #3a465d;background:#141e31;color:#e5c98d;border-radius:7px}.pro-history-actions button:disabled{opacity:.3;cursor:not-allowed}
+@media(max-width:560px){.pro-history-actions{gap:3px}.pro-history-actions button{width:26px;height:28px}}
