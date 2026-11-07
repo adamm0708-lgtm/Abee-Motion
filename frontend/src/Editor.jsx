@@ -44,7 +44,16 @@ export default function Editor({ project, onBack }) {
   const finishObjectDrag = (event) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    setLayers(old => old.map(layer => layer.id === drag.id ? { ...layer, x: drag.x, y: drag.y } : layer));
+    setLayers(old => old.map(layer => {
+      if (layer.id !== drag.id) return layer;
+      const snapshot = { t: Number(time.toFixed(2)), x: drag.x, y: drag.y, scale: layer.scale, rotation: layer.rotation, opacity: layer.opacity };
+      const frames = layer.keyframes || [];
+      const exists = frames.some(frame => Math.abs(frame.t - time) < 0.05);
+      const keyframes = exists
+        ? frames.map(frame => Math.abs(frame.t - time) < 0.05 ? snapshot : frame)
+        : [...frames, snapshot].sort((a,b) => a.t-b.t);
+      return { ...layer, x: drag.x, y: drag.y, keyframes };
+    }));
     dragRef.current = null;
   };
   const update = (patch) => setLayers(old => old.map(l => l.id === selected ? { ...l, ...patch } : l));
