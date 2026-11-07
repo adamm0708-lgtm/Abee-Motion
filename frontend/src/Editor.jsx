@@ -17,11 +17,84 @@ export default function Editor({ project, onBack }) {
   const [playing, setPlaying] = useState(false);
   const [tab, setTab] = useState("design");
   const [uploading, setUploading] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [saveState, setSaveState] = useState("Memuat proyek...");
   const timelineRef = useRef(null);
   const objectRefs = useRef({});
   const dragRef = useRef(null);
   const uploadInputRef = useRef(null);
   const active = layers.find(l => l.id === selected) || layers[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProject() {
+      if (!project?.id) { setHydrated(true); setSaveState("Proyek belum dipilih"); return; }
+      setHydrated(false);
+      setSaveState("Memuat proyek...");
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+        const [projectResponse, assetsResponse] = await Promise.all([
+          fetch(`${apiBase}/api/projects/${project.id}`),
+          fetch(`${apiBase}/api/projects/${project.id}/assets`)
+        ]);
+        const projectResult = await projectResponse.json().catch(() => ({}));
+        const assetsResult = await assetsResponse.json().catch(() => ({}));
+        if (!projectResponse.ok) throw new Error(projectResult.error || "Gagal memuat proyek");
+        const saved = projectResult.data?.timeline || {};
+        let restored = Array.isArray(saved.layers) && saved.layers.length ? saved.layers : initialLayers;
+        const knownAssets = new Set(restored.map(layer => layer.assetId).filter(Boolean));
+        const nextId = Math.max(0, ...restored.map(layer => Number(layer.id) || 0)) + 1;
+        const storedAssets = Array.isArray(assetsResult.data) ? assetsResult.data : [];
+        const recoveredAssets = storedAssets
+          .filter(asset => asset.asset_type === "image" && !knownAssets.has(asset.id))
+          .map((asset, index) => ({
+            id: nextId + index, name: asset.file_name || "Gambar",
+            type: "image", text: "", imageSrc: asset.file_url, assetId: asset.id,
+            x: 50, y: 50, scale: 1, rotation: 0, opacity: 100,
+            color: "#ffffff", start: 0, end: Number(saved.duration || projectResult.data.duration || 15),
+            visible: true, locked: false, ease: "power2.inOut",
+            keyframes: [{ t: 0, x: 50, y: 50, scale: 1, rotation: 0, opacity: 100 }]
+          }));
+        restored = [...restored, ...recoveredAssets];
+        if (cancelled) return;
+        setLayers(restored);
+        setRatio(saved.ratio || projectResult.data.ratio || "9:16");
+        setDuration(Number(saved.duration || projectResult.data.duration) || 15);
+        setSelected(restored[0]?.id ?? null);
+        setTime(0);
+        setSaveState("Proyek dimuat");
+      } catch (error) {
+        if (!cancelled) setSaveState("Gagal memuat: " + error.message);
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    }
+    loadProject();
+    return () => { cancelled = true; };
+  }, [project?.id]);
+
+  useEffect(() => {
+    if (!hydrated || !project?.id) return;
+    setSaveState("Ada perubahan...");
+    const timer = window.setTimeout(async () => {
+      try {
+        setSaveState("Menyimpan...");
+        const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+        const response = await fetch(`${apiBase}/api/projects/${project.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ratio, duration, timeline: { layers, ratio, duration } })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Autosave gagal");
+        setSaveState("Tersimpan");
+      } catch (error) {
+        setSaveState("Gagal menyimpan");
+        console.error("Bang Motion autosave:", error);
+      }
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [layers, ratio, duration, hydrated, project?.id]);
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -156,7 +229,7 @@ export default function Editor({ project, onBack }) {
   }, [playing, layers]);
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
-    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · AUTO WORKSPACE</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
+    <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><button className="pro-export" onClick={()=>alert("Ekspor MP4 cloud akan diaktifkan pada tahap rendering.")}><Download size={15}/> Export</button></div>
     <div className="pro-workspace">
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button onClick={()=>addLayer("audio")}><Music2/><span>Audio</span></button></aside>
       <div className="pro-stage">
