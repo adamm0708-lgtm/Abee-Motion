@@ -1,7 +1,7 @@
 // Abee Motion Verse editor: browser-local WebM export entry point.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
-import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle, Undo2, Redo2 } from "lucide-react";
+import { ArrowLeft, Play, Pause, Plus, Type, Square, Image, Music2, Trash2, Copy, Eye, EyeOff, Lock, Unlock, Diamond, Download, Monitor, Smartphone, RectangleHorizontal, Circle, Undo2, Redo2, WandSparkles } from "lucide-react";
 
 const initialLayers = [
   { id: 1, name: "Judul utama", type: "text", text: "MAKE IT MOVE.", x: 50, y: 48, scale: 1, rotation: 0, opacity: 100, color: "#f4d28d", start: 0, end: 8, visible: true, locked: false, ease:"power2.inOut", keyframes: [{t:0,x:50,y:48,scale:0.8,rotation:-8,opacity:0},{t:4,x:50,y:42,scale:1.15,rotation:0,opacity:100}] },
@@ -24,6 +24,10 @@ export default function Editor({ project, onBack }) {
   const [rendering, setRendering] = useState(false);
   const [renderState, setRenderState] = useState("Export");
   const [renderUrl, setRenderUrl] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiHtml, setAiHtml] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
   const ffmpegRef = useRef(null);
   const historyRef = useRef({ past: [], future: [] });
   const lastLayersRef = useRef(null);
@@ -143,6 +147,7 @@ export default function Editor({ project, onBack }) {
         restored = [...restored, ...recoveredAssets];
         if (cancelled) return;
         setLayers(restored);
+        setAiHtml(typeof saved.generatedHtml === "string" ? saved.generatedHtml : "");
         setRatio(saved.ratio || projectResult.data.ratio || "9:16");
         setDuration(Number(saved.duration || projectResult.data.duration) || 15);
         setSelected(restored[0]?.id ?? null);
@@ -199,7 +204,7 @@ export default function Editor({ project, onBack }) {
         const response = await fetch(`${apiBase}/api/projects/${project.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ratio, duration, timeline: { layers, ratio, duration } })
+          body: JSON.stringify({ ratio, duration, timeline: { layers, ratio, duration, generatedHtml: aiHtml } })
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || "Autosave gagal");
@@ -697,14 +702,41 @@ export default function Editor({ project, onBack }) {
       }
     });
   }, [time, playing, layers, duration]);
+  const handleAiGenerate = async () => {
+    if (aiLoading) return;
+    if (aiPrompt.trim().length < 5) { setAiError("Tulis deskripsi minimal 5 karakter."); return; }
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || "http://localhost:4000";
+      const response = await fetch(`${apiBase}/api/ai/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: aiPrompt.trim(), duration, ratio })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "AI gagal membuat animasi.");
+      if (typeof result.html !== "string" || !result.html.toLowerCase().includes("<html")) {
+        throw new Error("Hasil AI tidak berisi dokumen HTML yang valid.");
+      }
+      setPlaying(false);
+      setTime(0);
+      setAiHtml(result.html);
+      setSaveState("Menyimpan hasil AI...");
+    } catch (error) {
+      setAiError(error.message || "Tidak dapat menghubungi AI.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
   const canvasRatio = ratio === "9:16" ? "portrait" : ratio === "16:9" ? "landscape" : "square";
   return <section className="pro-editor">
     <div className="pro-top"><button className="pro-back" onClick={onBack}><ArrowLeft size={17}/> Kembali</button><div className="pro-project"><b>{project?.title || "Motion Project"}</b><small>EDITOR PROFESIONAL · {saveState}</small></div><div className="pro-history-actions"><button onClick={undo} disabled={!historyRef.current.past.length} title="Undo"><Undo2 size={16}/></button><button onClick={redo} disabled={!historyRef.current.future.length} title="Redo"><Redo2 size={16}/></button></div><div className="pro-export-group"><button className="pro-export" disabled={rendering} onClick={()=>handleExport("mp4")}><Download size={15}/> {rendering?renderState:"Export MP4"}</button><button className="pro-export-secondary" disabled={rendering} onClick={()=>handleExport("webm")}>WebM</button></div></div>
     <div className="pro-workspace">
       <aside className="pro-tools"><button onClick={()=>addLayer("text")}><Type/><span>Teks</span></button><button onClick={()=>addLayer("shape")}><Square/><span>Shape</span></button><button disabled={uploading} onClick={()=>uploadInputRef.current?.click()}><Image/><span>{uploading?"Upload...":"Upload"}</span></button><input ref={uploadInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleImageUpload}/><button disabled={uploading} onClick={()=>audioInputRef.current?.click()}><Music2/><span>{uploading?"Upload...":"Audio"}</span></button><input ref={audioInputRef} type="file" accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac" hidden onChange={handleAudioUpload}/></aside>
       <div className="pro-stage">
-        <div className="pro-stage-head"><span>CANVAS / LIVE PREVIEW</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
-        <div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}><div className="pro-canvas-glow"/>{layers.filter(layer=>layer.type==="audio"&&layer.audioSrc).map(layer=><audio key={layer.id} ref={node=>{audioRefs.current[layer.id]=node}} src={layer.audioSrc} preload="auto"/>) }{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</div></div>
+        <div className="pro-stage-head"><span>{aiHtml ? "AI MOTION / LIVE PREVIEW" : "CANVAS / LIVE PREVIEW"}</span><div className="pro-ratios">{[["9:16",Smartphone],["16:9",RectangleHorizontal],["1:1",Circle]].map(([r,I])=><button key={r} className={ratio===r?"chosen":""} onClick={()=>setRatio(r)}><I size={13}/>{r}</button>)}</div></div>
+        <div className="pro-ai-panel"><div className="pro-ai-heading"><WandSparkles size={17}/><b>AI Motion Generator</b><span>Prompt ke animasi</span></div><textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} placeholder="Contoh: Video motion graphics 15 detik tentang promo kopi, gaya premium, teks kinetik, transisi halus..." rows={2}/><div className="pro-ai-actions"><span>{aiError || "Hasil AI tampil langsung di canvas preview."}</span><div>{aiHtml && <button className="pro-ai-reset" onClick={()=>setAiHtml("")}>Kembali ke editor layer</button>}<button className="pro-ai-generate" disabled={aiLoading} onClick={handleAiGenerate}><WandSparkles size={15}/>{aiLoading?"Sedang membuat...":"Generate Motion"}</button></div></div></div><div className="pro-canvas-wrap"><div className={"pro-canvas "+canvasRatio}>{aiHtml ? <iframe className="pro-ai-frame" title="Pratinjau animasi AI" sandbox="allow-scripts" srcDoc={aiHtml}/> : <><div className="pro-canvas-glow"/>{layers.filter(layer=>layer.type==="audio"&&layer.audioSrc).map(layer=><audio key={layer.id} ref={node=>{audioRefs.current[layer.id]=node}} src={layer.audioSrc} preload="auto"/>) }{previewLayers.map(l=><div key={l.id} onPointerDown={e=>handleObjectPointerDown(e,l)} onPointerMove={handleObjectPointerMove} onPointerUp={finishObjectDrag} onPointerCancel={finishObjectDrag} onClick={()=>setSelected(l.id)} className={"pro-object "+(selected===l.id?"picked":"")+(l.locked?" locked":"")} ref={node=>{objectRefs.current[l.id]=node}} style={{left:l.x+"%",top:l.y+"%",transform:"translate(-50%,-50%)",opacity:1,color:l.color,borderColor:l.color}}>{l.type==="text"?<span>{l.text || "Teks baru"}</span>:l.type==="shape"?<i/>:l.type==="image"?<img className="pro-image-content" src={l.imageSrc} alt={l.name} draggable="false"/>:<span>♫ AUDIO</span>}</div>)}</>}</div></div>
         <div className="pro-playbar"><button onClick={()=>setPlaying(!playing)}>{playing?<Pause size={16}/>:<Play size={16}/>}</button><span>{time.toFixed(1)}s / {duration}s</span><input className="pro-time-scrubber" type="range" min="0" max={duration} step=".1" value={Math.min(time,duration)} onInput={e=>seekTime(e.currentTarget.value)} onChange={e=>seekTime(e.currentTarget.value)} aria-label="Geser waktu video"/><span>{ratio}</span></div>
       </div>
       <aside className="pro-inspector"><div className="pro-tabs"><button className={tab==="design"?"on":""} onClick={()=>setTab("design")}>Properties</button><button className={tab==="layers"?"on":""} onClick={()=>setTab("layers")}>Layers</button></div>
