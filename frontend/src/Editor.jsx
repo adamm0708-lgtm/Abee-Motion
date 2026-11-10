@@ -215,7 +215,7 @@ export default function Editor({ project, onBack }) {
       }
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [layers, ratio, duration, hydrated, project?.id]);
+  }, [layers, ratio, duration, aiHtml, hydrated, project?.id]);
   const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
