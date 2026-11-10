@@ -100,7 +100,7 @@ function App() {
         <div className="quick-grid">
           <button className="quick-card" onClick={()=>setModal(true)}><div className="quick-icon gold"><Plus/></div><b>Proyek baru</b><span>Mulai dari kanvas kosong</span></button>
           <button className="quick-card" onClick={()=>setPage("templates")}><div className="quick-icon purple"><Layers3/></div><b>Jelajahi template</b><span>Pilih gaya visual siap pakai</span></button>
-          <button className="quick-card" onClick={()=>notify("AI Generator tersedia pada tahap 2")}><div className="quick-icon blue"><WandSparkles/></div><b>Generate dengan AI</b><span>Ubah prompt menjadi motion</span><small className="coming">SEGERA HADIR</small></button>
+          <button className="quick-card" onClick={()=>{setTitle("AI Motion Baru");setModal(true)}}><div className="quick-icon blue"><WandSparkles/></div><b>Generate dengan AI</b><span>Ubah prompt menjadi motion</span><small className="coming">SEGERA HADIR</small></button>
         </div>
         <div className="section-head recent-head"><div><div className="eyebrow muted">RECENT FILES</div><h2>Proyek terakhir</h2></div></div>
         {loading ? <div className="empty">Memuat proyek...</div> : projects.length===0 ? <div className="empty"><div className="empty-icon"><Film size={25}/></div><b>Belum ada proyek</b><span>Proyek pertamamu menunggu untuk dibuat.</span><button className="text-btn" onClick={()=>setModal(true)}>Buat proyek pertama <ArrowUpRight size={15}/></button></div> :
