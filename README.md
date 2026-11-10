@@ -4,7 +4,8 @@ PWA pribadi untuk mengelola proyek motion graphics. Tahap 1 mencakup:
 - Dashboard responsif untuk Android
 - Daftar proyek dan pembuatan proyek
 - Galeri template awal
-- Editor shell dengan preview placeholder dan panel pengaturan
+- Editor timeline dengan layer, keyframe, upload aset, autosave, dan preview
+- AI Motion Generator melalui Gemini API untuk membuat animasi HTML/CSS/SVG dan menyimpan preview ke proyek
 - Backend Express dengan health check dan API proyek/template
 - Skema Supabase SQL opsional
 
@@ -45,5 +46,19 @@ Buka alamat Vite yang tampil. Untuk HP, gunakan alamat LAN komputer dan pastikan
 
 Jika variabel Supabase belum diisi, backend memakai penyimpanan memori sementara. Data demo akan hilang ketika server dimulai ulang.
 
-## Catatan tahap 1
-Tombol "Buat video dengan AI" dan "Export MP4" masih berupa placeholder UI. Integrasi AI API, GSAP timeline engine, upload aset, dan cloud renderer masuk tahap 2–4.
+## AI Motion Generator (Tahap 2 awal)
+- Editor menyediakan panel prompt untuk membuat animasi motion graphics melalui Gemini.
+- Backend memanggil Gemini API; API key hanya disimpan di environment backend sebagai `GEMINI_API_KEY`.
+- Model dapat diatur melalui `GEMINI_MODEL`; default saat ini `gemini-3.8-flash`.
+- Hasil HTML animasi disimpan pada timeline proyek dan ditampilkan di preview iframe terisolasi.
+- Preview HTML hasil AI saat ini belum menjadi layer timeline dan belum ikut dalam ekspor MP4/WebM. Ekspor yang tersedia masih merender layer editor biasa.
+
+### Environment backend
+Set minimal:
+- `GEMINI_API_KEY`: API key dari Google AI Studio.
+Opsional:
+- `GEMINI_MODEL`: nama model Gemini, default `gemini-3.8-flash`.
+- `FRONTEND_ORIGIN`: origin frontend untuk CORS.
+- `SUPABASE_URL` dan `SUPABASE_SERVICE_ROLE_KEY`: penyimpanan proyek dan aset persisten.
+
+Jangan pernah memasukkan Gemini API key atau Supabase service role key ke variabel frontend berawalan `VITE_`.
